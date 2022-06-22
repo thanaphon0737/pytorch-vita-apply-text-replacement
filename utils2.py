@@ -125,24 +125,6 @@ def prepare_text_batch(batchfnames, wd=256, ht=256, anglejitter=False):
     return torch.cat(img_list, dim=0)
 
 # prepare {Xl, X, Y, fixed_noise} in PIL format from one image pair [X,Y]
-def load_style_image_pair_og(filename, scales=[-1.0,-1./3,1./3,1.0], sketchmodule=None, gpu=True):
-    img = Image.open(filename) 
-    ori_wd, ori_ht = img.size
-    ori_wd = ori_wd // 2
-    X = pil2tensor(img.crop((0,0,ori_wd,ori_ht))).unsqueeze(dim=0)
-    Y = pil2tensor(img.crop((ori_wd,0,ori_wd*2,ori_ht))).unsqueeze(dim=0)
-    Xls = []    
-    Noise = torch.tensor(0).float().repeat(1, 1, 1).expand(3, ori_ht, ori_wd)
-    Noise = Noise.data.new(Noise.size()).normal_(0, 0.2)
-    Noise = Noise.unsqueeze(dim=0)
-    #Noise = tensor2pil((Noise+1)/2)    
-    if sketchmodule is not None:
-        X_ = to_var(X) if gpu else X
-        for l in scales:  
-            with torch.no_grad():
-                Xl = sketchmodule(X_, l).detach()
-            Xls.append(to_data(Xl) if gpu else Xl)            
-    return [Xls, X, Y, Noise]
 def load_style_image_pair(filename,std_name, scales=[-1.0,-1./3,1./3,1.0], sketchmodule=None, gpu=True):
     img = Image.open(filename) 
     img = img.convert('RGB')
@@ -173,15 +155,15 @@ def load_style_image_pair(filename,std_name, scales=[-1.0,-1./3,1./3,1.0], sketc
     Ys = img.crop((ori_wd,0,ori_wd*2,ori_ht))
     Xshow = np.concatenate((np.expand_dims(X.squeeze().numpy()[0,:,:],axis=-1),np.expand_dims(X.squeeze().numpy()[1,:,:],axis=-1),np.expand_dims(X.squeeze().numpy()[2,:,:],axis=-1)),axis=-1)
     Xshow = ((Xshow + 1)/2 *255).astype('uint8')
-    # plt.title('Xshow')
-    # plt.imshow(Xshow)
-    # plt.show()
+    plt.title('Xshow')
+    plt.imshow(Xshow)
+    plt.show()
     
     Xlshow = np.concatenate((np.expand_dims(Xlx.squeeze().numpy()[0,:,:],axis=-1),np.expand_dims(Xlx.squeeze().numpy()[1,:,:],axis=-1),np.expand_dims(Xlx.squeeze().numpy()[2,:,:],axis=-1)),axis=-1)
     Xlshow = ((Xlshow + 1)/2 *255).astype('uint8')
-    # plt.title('Xl-show')
-    # plt.imshow(Xlshow)
-    # plt.show()
+    plt.title('Xl-show')
+    plt.imshow(Xlshow)
+    plt.show()
     Xls = []    
     Noise = torch.tensor(0).float().repeat(1, 1, 1).expand(3, ori_ht, ori_wd)
     Noise = Noise.data.new(Noise.size()).normal_(0, 0.2)
@@ -214,60 +196,109 @@ def rotate_tensor(x, angle):
 # crop subimages for training 
 # for structure transfer:  [Input,Output]=[Xl, X]
 # for texture transfer:  [Input,Output]=[X, Y]
-def cropping_training_batches(Input, Output, Noise, batchsize=16, anglejitter=False, wd=256, ht=256):
+def cropping_training_batches(Input, Output, Noise, batchsize=16, anglejitter=False, wd=256, ht=256,i=0):
     img_list = []
     
-    ori_wd = Input.size(2)
-    ori_ht = Input.size(3)
+    ori_wd = Input.size(3)
+    ori_ht = Input.size(2)
+    sub = wd
+    x,y = 0,0
     # print('Noise-corp',Noise.shape)
+    h_off = ori_ht + 1 - sub
+    w_off = ori_wd + 1 - sub
+    # print(Input.shape)
+    # sh = Input.cpu().detach().numpy()
+    # sh = np.squeeze(sh)
+    # sh = np.concatenate((np.expand_dims(sh.squeeze()[0,:,:],axis=-1),np.expand_dims(sh.squeeze()[1,:,:],axis=-1),np.expand_dims(sh.squeeze()[2,:,:],axis=-1)),axis=-1)
+    # plt.imshow(sh)
+    # plt.show()
     # print('w, h:', ori_wd,ori_ht)
-    for i in range(batchsize):
-        w = random.randint(0,ori_wd-wd)
-        h = random.randint(0,ori_ht-ht)
-        input = Input[:,:,w:w+wd,h:h+ht].clone()
-        # a = (input.cpu().detach().numpy())
-        # a = np.squeeze(a)
-        # print('a', a.shape)
-        # print(a)
-        # a = np.concatenate((np.expand_dims(a.squeeze()[0,:,:],axis=-1),np.expand_dims(a.squeeze()[1,:,:],axis=-1),np.expand_dims(a.squeeze()[2,:,:],axis=-1)),axis=-1)
-        # plt.title('a-crop')
-        # plt.imshow(a)
-        # plt.show()
-        w_crop = w+wd
-        h_crop = h+ht
-        output = Output[:,:,w:w_crop,h:h_crop]
-        # print('w,h,w_crop,h_crop',w,h,w+wd,h+ht)
-        noise = Noise[:,:,w:w_crop,h:h_crop]
-        # print('noise',noise.shape)
-        if anglejitter:
-            random_angle = random.randint(0,3)
-            input = rotate_tensor(input, random_angle)
-            output = rotate_tensor(output, random_angle)
-            noise = rotate_tensor(noise, random_angle)        
-        input[:,0] = torch.clamp(input[:,0] + noise[:,0], -1, 1)        
-        img_list.append(torch.cat((input,output), dim = 1))        
+    for y in range(0,ori_ht,sub):
+        for x in range(0,ori_wd,sub):
+            
+            # w = random.randint(0,ori_wd-wd)
+            # h = random.randint(0,ori_ht-ht)
+            if x != 0:
+                if(x+sub > ori_wd):
+                    x = ori_wd-sub
+            if y != 0:
+                if(y+sub > ori_ht):
+                    y = ori_ht-sub
+            # print('pos x,y:',(x,y))
+            input = Input[:,:,y:y+sub,x:x+sub].clone()
+            a = (input.cpu().detach().numpy())
+            a = np.squeeze(a)
+            # print('a', a.shape)
+            # print(a)
+            a = np.concatenate((np.expand_dims(a.squeeze()[0,:,:],axis=-1),np.expand_dims(a.squeeze()[1,:,:],axis=-1),np.expand_dims(a.squeeze()[2,:,:],axis=-1)),axis=-1)
+            # plt.imshow(a)
+            # plt.show()
+            # print(np.max(a[:,:,0]))
+            if(np.max(a[:,:,0]) > 0):
+
+                # print(np.max(a[:,:,0]))
+                # plt.title('a-crop')
+                # plt.imshow(a)
+                # plt.show()
+            # plt.savefig('./newset/testcrop/' + str(x)+ '-' +str(y) +'.png')
+            # print(input[:,0,:,:])
+                output = Output[:,:,y:y+sub,x:x+sub]
+                # b = (output.cpu().detach().numpy())
+                # b = np.squeeze(b)
+                # b = np.concatenate((np.expand_dims(b.squeeze()[0,:,:],axis=-1),np.expand_dims(b.squeeze()[1,:,:],axis=-1),np.expand_dims(b.squeeze()[2,:,:],axis=-1)),axis=-1)
+                
+                # c = np.concatenate((a,b),axis=0)
+                # plt.imshow(c)
+                # plt.show()
+                noise = Noise[:,:,y:y+sub,x:x+sub]
+                if anglejitter:
+                    random_angle = random.randint(0,3)
+                    input = rotate_tensor(input, random_angle)
+                    output = rotate_tensor(output, random_angle)
+                    noise = rotate_tensor(noise, random_angle)        
+                input[:,0] = torch.clamp(input[:,0] + noise[:,0], -1, 1)       
+                
+                img_list.append(torch.cat((input,output), dim = 1))  
+            # else:
+                # plt.imshow(a)
+                # plt.show()  
     data = torch.cat(img_list, dim=0)
-    ins = data[:,0:3,:,:]
-    outs = data[:,3:,:,:]
-    return ins, outs
-def cropping_training_batches_og(Input, Output, Noise, batchsize=16, anglejitter=False, wd=256, ht=256):
-    img_list = []
-    ori_wd = Input.size(2)
-    ori_ht = Input.size(3)
-    for i in range(batchsize):
-        w = random.randint(0,ori_wd-wd)
-        h = random.randint(0,ori_ht-ht)
-        input = Input[:,:,w:w+wd,h:h+ht].clone()
-        output = Output[:,:,w:w+wd,h:h+ht]
-        noise = Noise[:,:,w:w+wd,h:h+ht]
-        if anglejitter:
-            random_angle = random.randint(0,3)
-            input = rotate_tensor(input, random_angle)
-            output = rotate_tensor(output, random_angle)
-            noise = rotate_tensor(noise, random_angle)        
-        input[:,0] = torch.clamp(input[:,0] + noise[:,0], -1, 1)        
-        img_list.append(torch.cat((input,output), dim = 1))        
-    data = torch.cat(img_list, dim=0)
-    ins = data[:,0:3,:,:]
-    outs = data[:,3:,:,:]
+    print('all sample: ',data.shape[0])
+    s = batchsize
+    x = 0
+    sample = int(data.shape[0]/s)
+    if s > data.shape[0]:
+        print('cant split ' + str(s) + ' more than ' + str(data.shape[0]))
+        return 0
+    for num in range(batchsize):
+        if num == i:
+            
+            if int(data.shape[0]//s != 0 and i == batchsize - 1):
+                ins = data[x::,0:3,:,:]
+                outs = data[x::,3:,:,:]
+            else:
+                ins = data[x:x+sample,0:3,:,:]
+                outs = data[x:x+sample,3:,:,:]
+        x += sample
+    # if(i == 0):
+    #     ins = data[0:sample,0:3,:,:]
+    #     print(ins.shape)
+    #     outs = data[0:sample,3:,:,:]
+    # elif i ==1:
+    #     ins = data[sample:sample*2,0:3,:,:]
+    #     print(ins.shape)
+    #     outs = data[sample:sample*2,3:,:,:]
+    # elif i ==2:
+    #     ins = data[sample*2:sample*3,0:3,:,:]
+    #     print(ins.shape)
+    #     outs = data[sample*2:sample*3,3:,:,:]
+    # elif i ==3:
+    #     ins = data[sample*3:sample*4,0:3,:,:]
+    #     print(ins.shape)
+    #     outs = data[sample*3:sample*4,3:,:,:]
+    # elif i == 4:
+    #     ins = data[sample*4::,0:3,:,:]
+    #     print(ins.shape)
+    #     outs = data[sample*4::,3:,:,:]
+    print('sample split: ',ins.shape)
     return ins, outs

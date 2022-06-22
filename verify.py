@@ -5,40 +5,50 @@ import pandas as pd
 import cv2
 import os
 import csv
-img = cv2.imread('../data/style/0_sk_x.png').astype('float')
-h,w,_ = img.shape
-w = w/2
-h = int(h)
-w = int(w)
-newsize = (624,300)
-crop_img = img[0:h,0:w]
-img = cv2.resize(crop_img,newsize)
+from options import Trainandverify
+
 
 
 # cv2.imshow('img',img)
 # cv2.waitKey(0)
-path = './predict/'
+C = './predict'
+D = 'D:\work\Masterdegree\shapmatching\predict'
+parser = Trainandverify()
+opts = parser.parse()
+print(opts.file_name)
+path = C
 file_list = os.listdir(path)
 filter_list = []
+target = opts.file_name
+img = cv2.imread('../data/style/' + opts.pic+'.png').astype('float')
+h,w,_ = img.shape
+h = int(h)
+w = int(w)
 for f in file_list:
-    if 'newtest' in f :
+    if target in f :
         filter_list.append(f)
+
 for fi in filter_list: 
 
     # file_target = '0_e_f_6_19042022-1250im-10001ep-rec-100-sadv-4.0'
     file_target = fi
-    arr = os.listdir(path + file_target)
+    arr = os.listdir(os.path.join(path , file_target))
     b = dict()
     g = dict()
     r = dict()
     t = dict()
+    length = len(arr)
+    i =0
     for filename in arr:
-        img2 = cv2.imread(os.path.join(path + file_target,filename)).astype('float')
-        
-        b.update({int(filename.split('_')[0]):np.mean(np.abs(img[:,:,0]-img2[:,:,0]))})
-        g.update({int(filename.split('_')[0]):np.mean(np.abs(img[:,:,1]-img2[:,:,1]))})
-        r.update({int(filename.split('_')[0]):np.mean(np.abs(img[:,:,2]-img2[:,:,2]))})
-        t.update({int(filename.split('_')[0]):np.mean(np.abs(img-img2))})
+        img2 = cv2.imread(os.path.join(os.path.join(path , file_target),filename)).astype('float')
+        nh,nw,_ = img2.shape
+        img = cv2.resize(img,(nw,nh))
+        b.update({int(filename.split('_')[0]):np.mean(np.abs(img[:,:,0]-img2[:,:,0])).astype('float')})
+        g.update({int(filename.split('_')[0]):np.mean(np.abs(img[:,:,1]-img2[:,:,1])).astype('float')})
+        r.update({int(filename.split('_')[0]):np.mean(np.abs(img[:,:,2]-img2[:,:,2])).astype('float')})
+        t.update({int(filename.split('_')[0]):np.mean(np.abs(img-img2)).astype('float')})
+        i += 1
+        print('Process: %d/%d'%(i,length))
 
     s_b = dict(sorted(b.items()))
     s_g = dict(sorted(g.items()))

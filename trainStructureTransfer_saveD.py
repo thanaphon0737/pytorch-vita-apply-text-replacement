@@ -49,8 +49,9 @@ def main():
     LDadvt = []
     LGadvt = []
     Lrect = []
-    os.makedirs(os.path.join('./predict',opts.save_name), exist_ok=True)
-    os.makedirs(os.path.join('./predict/models',opts.save_name), exist_ok=True)
+    
+    os.makedirs(os.path.join('D:\work\Masterdegree\shapmatching\predict',opts.save_name), exist_ok=True)
+    os.makedirs(os.path.join('D:\work\Masterdegree\shapmatching\predict\models',opts.save_name), exist_ok=True)
     
     for epoch in range(opts.step1_epochs):
         for i in range(opts.batchsize):
@@ -64,14 +65,7 @@ def main():
             LDadvt.append(losses[0].detach().cpu().numpy())
             LGadvt.append(losses[1].detach().cpu().numpy())
             Lrect.append(losses[2].detach().cpu().numpy())
-            # if i == (opts.Straining_num//opts.batchsize) - 1:
-            #     print('can save')
-            #     # losses_save.append([losses[0].detach().cpu().numpy(), losses[1].detach().cpu().numpy(), losses[2].detach().cpu().numpy(), losses[3]])
-            #     epoch_csv.append(epoch+1)
-            #     LDadv.append(losses[0].detach().cpu().numpy())
-            #     LGadv.append(losses[1].detach().cpu().numpy())
-            #     Lrec.append(losses[2].detach().cpu().numpy())
-            #     Lgly.append(losses[3])
+           
         epoch_csv.append(epoch+1)
         LDadv.append(np.mean(np.asarray(LDadvt)))    
         LGadv.append(np.mean(np.asarray(LGadvt)))  
@@ -79,9 +73,11 @@ def main():
         Lgly.append(losses[3])
 
         # if epoch%num_save_epoch ==0:
-        netShapeM.save_structure_model(os.path.join('./predict/models',opts.save_name),  str(epoch+1))  
+        netShapeM.save_structure_model(os.path.join('D:\work\Masterdegree\shapmatching\predict\models',opts.save_name),  str(epoch+1))  
         netGlyph = GlyphGenerator(n_layers=6, ngf=32)
-        netGlyph.load_state_dict(torch.load('./predict/models/'+ opts.save_name +'/' +str(epoch+1)+ '-GS.ckpt'))
+        safe = os.path.join(os.path.join('D:\work\Masterdegree\shapmatching\predict\models',opts.save_name),  (str(epoch+1) + '-GS.ckpt'))
+        
+        netGlyph.load_state_dict(torch.load(safe))
         
         if opts.gpu:
             netGlyph.cuda()
@@ -92,17 +88,16 @@ def main():
             text = to_var(text) 
         text[:,0:1] = gaussian(text[:,0:1], stddev=0.2)
         print("text",text.size())
-        img_str = netGlyph(text, 0*2.0-1.0) 
+        img_str = netGlyph(text, 0) 
         result = [img_str]
         if opts.gpu:
             for i in range(len(result)):              
                 result[i] = to_data(result[i])
-        torch.cuda.empty_cache()
         print('--- save ---')
         # directory
             
         for i in range(len(result)):     
-            result_filename = os.path.join('./predict/' + opts.save_name, (str(epoch+1) + '_' + opts.save_name +'.png'))
+            result_filename = os.path.join(os.path.join('D:\work\Masterdegree\shapmatching\predict' , opts.save_name), (str(epoch+1) + '_' + opts.save_name +'.png'))
             save_image(result[i][0], result_filename)
     save_csv = {
         'epoch':epoch_csv,
@@ -138,6 +133,6 @@ def main():
         the_file.write("--- {:.3f} seconds  ---\n".format(sec))
         the_file.write("--- {:.3f} minits  ---\n".format(minit))
         the_file.write("--- {:.3f} hours  ---\n".format(hour))
-
+    
 if __name__ == '__main__':
     main()
